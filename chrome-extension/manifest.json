@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Fake News Detector",
+  "version": "1.0",
+  "description": "Detect fake news on any webpage using AI",
+  "permissions": ["activeTab", "scripting"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Check for Fake News"
+  },
+  "icons": {}
+}

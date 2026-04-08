@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.env
+
+# ML artifacts
+ml/models/baseline.pkl
+ml/models/bert_finetuned/*
+!ml/models/bert_finetuned/.gitkeep
+ml/training_output/
+ml/outputs/*.png
+
+# Data
+data/*.tsv
+data/*.csv
+data/*.zip
+
+# Node
+frontend/node_modules/
+frontend/build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

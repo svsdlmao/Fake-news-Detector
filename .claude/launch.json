@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "FastAPI Backend",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", "8000"],
+      "port": 8000
+    },
+    {
+      "name": "React Frontend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["frontend/start.js"],
+      "port": 3000
+    }
+  ]
+}
