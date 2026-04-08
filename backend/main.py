@@ -15,6 +15,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
 
 from backend.scraper import fetch_article
+from backend.factcheck import find_fact_checks
 
 app = FastAPI(title="Fake News Detector API", version="1.0.0")
 
@@ -48,6 +49,7 @@ class PredictionResponse(BaseModel):
     label: str
     confidence: float
     top_words: list
+    fact_checks: list = []
 
 
 def preprocess_text(text):
@@ -216,10 +218,17 @@ async def predict(request: TextRequest):
     else:
         result = predict_baseline(request.text)
 
+    # Fact-check lookup (non-blocking: failures won't break prediction)
+    try:
+        fact_checks = find_fact_checks(request.text)
+    except Exception:
+        fact_checks = []
+
     return PredictionResponse(
         label=result['label'],
         confidence=result['confidence'],
         top_words=result['top_words'],
+        fact_checks=fact_checks,
     )
 
 
@@ -239,8 +248,15 @@ async def predict_url(request: URLRequest):
     else:
         result = predict_baseline(article_text)
 
+    # Fact-check lookup (non-blocking: failures won't break prediction)
+    try:
+        fact_checks = find_fact_checks(article_text)
+    except Exception:
+        fact_checks = []
+
     return PredictionResponse(
         label=result['label'],
         confidence=result['confidence'],
         top_words=result['top_words'],
+        fact_checks=fact_checks,
     )

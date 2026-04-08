@@ -3,6 +3,7 @@ import { Toaster, toast } from 'react-hot-toast';
 import InputForm from './components/InputForm';
 import ResultCard from './components/ResultCard';
 import WordChart from './components/WordChart';
+import FactChecks from './components/FactChecks';
 import axios from 'axios';
 
 const API_URL = 'http://localhost:8000';
@@ -145,6 +146,7 @@ function App() {
             <div className="space-y-6 animate-fade-in">
               <ResultCard label={result.label} confidence={result.confidence} />
               <WordChart topWords={result.top_words} />
+              <FactChecks factChecks={result.fact_checks} />
               <div className="text-center pt-4">
                 <button
                   onClick={reset}
