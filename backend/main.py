@@ -4,9 +4,11 @@ import sys
 import re
 import numpy as np
 import joblib
+import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from transformers import DistilBertTokenizerFast, DistilBertForSequenceClassification
 
 # Add project root to path
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -26,10 +28,14 @@ app.add_middleware(
 )
 
 # Global model references
-predictor = None       # BERT predictor (if available)
-baseline_model = None  # Baseline TF-IDF + LR (fallback)
+bert_model = None
+bert_tokenizer = None
+baseline_model = None
 baseline_vectorizer = None
-model_type = None      # "bert" or "baseline"
+model_type = None
+device = None
+
+ID2LABEL = {0: 'real', 1: 'fake'}
 
 
 class TextRequest(BaseModel):
@@ -51,26 +57,90 @@ def preprocess_text(text):
     return text
 
 
+def predict_bert_fast(text):
+    """Fast BERT prediction using attention weights for explainability (single inference)."""
+    inputs = bert_tokenizer(text, return_tensors='pt', truncation=True,
+                            padding=True, max_length=256)
+    inputs = {k: v.to(device) for k, v in inputs.items()}
+
+    with torch.no_grad():
+        outputs = bert_model(**inputs, output_attentions=True)
+
+    probs = torch.softmax(outputs.logits, dim=-1).cpu().numpy()[0]
+    pred_idx = int(np.argmax(probs))
+    label = ID2LABEL[pred_idx].upper()
+    confidence = float(probs[pred_idx])
+
+    # Get word importance from attention weights (last layer, averaged across heads)
+    attentions = outputs.attentions
+    if attentions and len(attentions) > 0:
+        # Shape: (num_heads, seq_len, seq_len)
+        attention = attentions[-1][0]  # last layer, first batch item
+        # CLS token's attention to all tokens, averaged across heads
+        cls_attention = attention.mean(dim=0)[0].cpu().numpy()
+    else:
+        # Fallback: uniform attention
+        seq_len = inputs['input_ids'].shape[1]
+        cls_attention = np.ones(seq_len) / seq_len
+
+    tokens = bert_tokenizer.convert_ids_to_tokens(inputs['input_ids'][0])
+
+    # Merge subwords and aggregate attention
+    word_scores = {}
+    current_word = ''
+    current_score = 0.0
+
+    for token, score in zip(tokens, cls_attention):
+        if token in ['[CLS]', '[SEP]', '[PAD]']:
+            continue
+        if token.startswith('##'):
+            current_word += token[2:]
+            current_score += float(score)
+        else:
+            if current_word:
+                word_scores[current_word] = word_scores.get(current_word, 0) + current_score
+            current_word = token
+            current_score = float(score)
+
+    if current_word:
+        word_scores[current_word] = word_scores.get(current_word, 0) + current_score
+
+    # Sort by importance and take top 10
+    sorted_words = sorted(word_scores.items(), key=lambda x: abs(x[1]), reverse=True)[:10]
+
+    # Normalize weights relative to the max
+    max_weight = max(abs(w) for _, w in sorted_words) if sorted_words else 1.0
+    top_words = []
+    for word, weight in sorted_words:
+        # Positive weight = pushes toward predicted class
+        # If predicted FAKE, positive = fake signal; if REAL, flip sign
+        normalized = weight / max_weight
+        if label == 'REAL':
+            normalized = -normalized
+        top_words.append({'word': word, 'weight': round(normalized, 4)})
+
+    return {
+        'label': label,
+        'confidence': round(confidence, 4),
+        'top_words': top_words,
+    }
+
+
 def predict_baseline(text):
     """Predict using baseline TF-IDF + Logistic Regression model."""
     processed = preprocess_text(text)
     X = baseline_vectorizer.transform([processed])
     proba = baseline_model.predict_proba(X)[0]
-    # Classes are sorted alphabetically: ['fake', 'real']
     classes = list(baseline_model.classes_)
-    fake_idx = classes.index('fake')
-    real_idx = classes.index('real')
 
     pred_idx = np.argmax(proba)
     label = classes[pred_idx].upper()
     confidence = float(proba[pred_idx])
 
-    # Get top feature weights for explainability
     feature_names = baseline_vectorizer.get_feature_names_out()
     tfidf_scores = X.toarray()[0]
-    coef = baseline_model.coef_[0]  # coefficients for the first class (fake)
+    coef = baseline_model.coef_[0]
 
-    # Word importance = tfidf_score * coefficient
     word_weights = tfidf_scores * coef
     nonzero = np.nonzero(tfidf_scores)[0]
     word_importance = [(feature_names[i], float(word_weights[i])) for i in nonzero]
@@ -91,14 +161,19 @@ def predict_baseline(text):
 @app.on_event("startup")
 async def load_model():
     """Load best available model at startup."""
-    global predictor, baseline_model, baseline_vectorizer, model_type
+    global bert_model, bert_tokenizer, baseline_model, baseline_vectorizer, model_type, device
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Try BERT first
     bert_dir = os.path.join(BASE_DIR, 'ml', 'models', 'bert_finetuned')
     if os.path.exists(bert_dir) and any(f.endswith('.bin') or f.endswith('.safetensors') for f in os.listdir(bert_dir)):
         try:
-            from ml.explainability import BertPredictor
-            predictor = BertPredictor(bert_dir)
+            bert_tokenizer = DistilBertTokenizerFast.from_pretrained(bert_dir)
+            bert_model = DistilBertForSequenceClassification.from_pretrained(
+                bert_dir, attn_implementation='eager')
+            bert_model.to(device)
+            bert_model.eval()
             model_type = "bert"
             print("BERT model loaded successfully")
             return
@@ -137,8 +212,7 @@ async def predict(request: TextRequest):
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
     if model_type == "bert":
-        from ml.explainability import explain_text
-        result = explain_text(request.text, predictor=predictor, num_features=10, num_samples=300)
+        result = predict_bert_fast(request.text)
     else:
         result = predict_baseline(request.text)
 
@@ -161,8 +235,7 @@ async def predict_url(request: URLRequest):
         raise HTTPException(status_code=422, detail=str(e))
 
     if model_type == "bert":
-        from ml.explainability import explain_text
-        result = explain_text(article_text, predictor=predictor, num_features=10, num_samples=300)
+        result = predict_bert_fast(article_text)
     else:
         result = predict_baseline(article_text)
 
