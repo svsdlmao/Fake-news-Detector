@@ -1,16 +1,31 @@
-# Fake News Detector
+# TruthLens — Fake News Detector
 
-An AI-powered fake news detection system that classifies news articles as **FAKE** or **REAL** using NLP and provides explainability through LIME.
+An AI-powered fake news detection system that classifies news articles as **FAKE** or **REAL** using a fine-tuned DistilBERT, with attention-based word importance and Google Fact Check lookups.
+
+## Live demo
+
+- **App:** https://truthlens-y91.pages.dev
+- **API:** https://svsdlmao-truthlens.hf.space (`/health`, `/predict`, `/predict-url`)
+
+Frontend runs on **Cloudflare Pages**, backend runs on **Hugging Face Spaces** (Docker, free CPU). See [`DEPLOY.md`](./DEPLOY.md) for the full deploy walkthrough.
+
+```bash
+curl -X POST https://svsdlmao-truthlens.hf.space/predict \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Scientists reveal the moon landing was faked."}'
+# → {"label":"FAKE","confidence":0.84, ...}
+```
 
 ## Features
 
-- **BERT-based classification** — Fine-tuned DistilBERT for accurate fake/real news detection
+- **BERT-based classification** — Fine-tuned DistilBERT for accurate fake/real news detection (~4s per request on CPU)
 - **Baseline comparison** — TF-IDF + Logistic Regression baseline for benchmarking
-- **LIME explainability** — See which words influenced the prediction and why
+- **Attention-based explainability** — Top words that drove the prediction, pulled from the model's last-layer attention in a single forward pass
+- **Live fact-check lookup** — Google Fact Check Tools API surfaces Snopes, PolitiFact, FactCheck.org, Reuters, AP verdicts when they exist
 - **Web scraping** — Paste a URL and the system extracts and analyzes the article
-- **Modern web UI** — React frontend with real-time results and interactive word importance charts
+- **Modern web UI** — React frontend with glass-morphism design, animated confidence ring, and interactive word importance chart
 - **Chrome extension** — Analyze any news page directly from your browser
-- **REST API** — FastAPI backend ready for integration
+- **REST API** — FastAPI backend with CORS-hardened production deploy
 
 ## Quick Start
 
@@ -90,9 +105,9 @@ fake-news-detector/
 
 ## Tech Stack
 
-- **ML**: PyTorch, HuggingFace Transformers, scikit-learn, LIME
-- **Backend**: FastAPI, BeautifulSoup4
-- **Frontend**: React, Tailwind CSS, Recharts
+- **ML**: PyTorch, HuggingFace Transformers (DistilBERT), scikit-learn
+- **Backend**: FastAPI, BeautifulSoup4 — hosted on Hugging Face Spaces (Docker)
+- **Frontend**: React 18, Tailwind CSS, Recharts — hosted on Cloudflare Pages
 - **Extension**: Chrome Manifest V3
 
 ## Dataset
