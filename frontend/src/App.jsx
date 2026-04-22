@@ -6,7 +6,7 @@ import WordChart from './components/WordChart';
 import FactChecks from './components/FactChecks';
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 function App() {
   const [result, setResult] = useState(null);

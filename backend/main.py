@@ -19,10 +19,22 @@ from backend.factcheck import find_fact_checks
 
 app = FastAPI(title="Fake News Detector API", version="1.0.0")
 
-# CORS
+# CORS — dev defaults plus any origins injected via ALLOWED_ORIGINS env var.
+# Set ALLOWED_ORIGINS="https://your-app.pages.dev,https://www.yourdomain.com"
+# in the Hugging Face Space secrets.
+_default_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+_extra_origins = [
+    o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()
+]
+_allowed_origins = _default_origins + _extra_origins
+
+# Also accept any *.pages.dev preview deploy so Cloudflare PR previews work.
+_allowed_origin_regex = r"https://.*\.pages\.dev"
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=_allowed_origins,
+    allow_origin_regex=_allowed_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
