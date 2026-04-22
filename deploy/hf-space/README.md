@@ -7,7 +7,7 @@ sdk: docker
 app_port: 7860
 pinned: false
 license: mit
-short_description: Fake news detection API powered by DistilBERT + fact-check lookup.
+short_description: DistilBERT fake news detector with fact-check lookup
 ---
 
 # TruthLens API
